@@ -1,0 +1,245 @@
+# Structured Text Extraction from Technical Documents - Detailed Project Description
+
+## Project Overview
+
+**Objective**: Develop a TrOCR-based deep learning model to extract structured table information from images of scientific documents, specifically converting table images to HTML markup that preserves the original table structure.
+
+**Primary Use Case**: Transform table images from scientific papers into machine-readable structured data for knowledge graph construction and automated document analysis.
+
+## Technical Specifications
+
+### Model Architecture
+- **Base Model**: Microsoft TrOCR (Transformer-based OCR)
+- **Vision Encoder**: DeiT (Data-efficient image Transformer)
+- **Text Decoder**: RoBERTa-based decoder
+- **Approach**: Fine-tune pre-trained TrOCR-base-printed on PubTabNet dataset
+
+### Input/Output Specification
+- **Input**: RGB images of tables from scientific documents
+- **Input Dimensions**: 384x384 pixels (TrOCR standard)
+- **Output**: HTML markup representing table structure
+- **Output Format**: Clean HTML with tags: `<table>`, `<tr>`, `<td>`, `<th>`, `<thead>`, `<tbody>`
+
+## Dataset Details
+
+### Primary Dataset: PubTabNet
+- **Size**: 568,000+ table images with HTML annotations
+- **Source**: Scientific literature table extractions
+- **Format**: Image-HTML pairs
+- **Quality**: High-quality annotations with complex table structures
+- **Split**: 80% train, 10% validation, 10% test
+
+### Data Characteristics
+- **Table Types**: Simple tables, merged cells, nested headers, multi-row headers
+- **Domains**: Scientific literature across multiple fields
+- **Image Quality**: High-resolution, clean table extractions
+- **Annotation Quality**: Human-verified HTML structure markup
+
+## Implementation Requirements
+
+### Data Processing Pipeline
+1. **Image Preprocessing**:
+   - Resize to 384x384 pixels
+   - Normalize pixel values to [0,1]
+   - Apply TrOCR processor transformations
+   
+2. **Text Preprocessing**:
+   - Clean HTML markup (remove styling attributes)
+   - Standardize table structure tags
+   - Add special tokens for table boundaries
+   - Handle long sequences (max length: 512 tokens)
+
+3. **Data Augmentation** (Optional):
+   - Slight rotation (-5° to +5°)
+   - Brightness adjustment (0.8 to 1.2)
+   - Gaussian noise (low intensity)
+
+### Model Configuration
+```
+Architecture: VisionEncoderDecoderModel
+Vision Encoder: 
+  - Model: microsoft/deit-base-distilled-patch16-384
+  - Hidden Size: 768
+  - Image Size: 384x384
+  - Patch Size: 16x16
+
+Text Decoder:
+  - Model: Based on RoBERTa architecture
+  - Vocabulary Size: 50265 + special tokens
+  - Max Length: 512 tokens
+  - Decoder Layers: 6
+
+Special Tokens to Add:
+  - <table>, </table>
+  - <tr>, </tr>
+  - <td>, </td>
+  - <th>, </th>
+  - <thead>, </thead>
+  - <tbody>, </tbody>
+```
+
+### Training Configuration
+```
+Training Parameters:
+  - Learning Rate: 5e-5 (with warmup)
+  - Batch Size: 8-16 (depending on GPU memory)
+  - Epochs: 15-20
+  - Optimizer: AdamW
+  - Weight Decay: 0.01
+  - Warmup Steps: 500
+  - Scheduler: Linear with warmup
+  - Gradient Clipping: 1.0
+
+Loss Function:
+  - Cross-entropy loss on generated tokens
+  - Label smoothing: 0.1
+
+Generation Parameters:
+  - Max Length: 512
+  - Num Beams: 4
+  - Early Stopping: True
+  - No Repeat N-gram: 3
+```
+
+## Evaluation Framework
+
+### Metrics to Implement
+1. **BLEU Score**: Text similarity between predicted and ground truth HTML
+2. **Exact Match Accuracy**: Percentage of perfect HTML matches
+3. **Token-level Accuracy**: Accuracy of individual HTML tokens
+4. **Structure-aware Metrics**:
+   - Tree Edit Distance (TED) for table structure
+   - Table Cell Accuracy
+   - Row/Column boundary detection accuracy
+
+### Evaluation Protocol
+- **Validation**: After each epoch on validation set
+- **Test Evaluation**: Final evaluation on held-out test set
+- **Qualitative Analysis**: Manual inspection of generated HTML
+- **Error Analysis**: Categorize failure modes and common errors
+
+## Expected Outputs and Deliverables
+
+### Model Outputs
+1. **Trained Model**: Fine-tuned TrOCR model saved in Hugging Face format
+2. **Processor**: Custom processor handling special tokens
+3. **Inference Pipeline**: Ready-to-use inference script
+4. **Model Checkpoints**: Best model and training checkpoints
+
+### Code Deliverables
+1. **Data Loading Module**: Custom dataset class for PubTabNet
+2. **Training Script**: Complete training pipeline with logging
+3. **Evaluation Script**: Comprehensive evaluation with all metrics
+4. **Inference Script**: Single image to HTML conversion
+5. **Preprocessing Utilities**: Image and text preprocessing functions
+
+### Documentation
+1. **Model Performance Report**: Detailed results and analysis
+2. **Usage Documentation**: How to use the trained model
+3. **Training Logs**: Loss curves, validation metrics over time
+4. **Error Analysis**: Common failure cases and limitations
+
+## Technical Constraints and Requirements
+
+### Hardware Requirements
+- **GPU**: Minimum 16GB VRAM (RTX 4090, V100, A100 recommended)
+- **RAM**: 32GB system RAM for data loading
+- **Storage**: 100GB for dataset and model artifacts
+
+### Software Dependencies
+```
+Core Libraries:
+- transformers >= 4.20.0
+- torch >= 1.12.0
+- torchvision >= 0.13.0
+- PIL (Pillow) >= 9.0.0
+- datasets >= 2.0.0
+
+Evaluation Libraries:
+- nltk (for BLEU score)
+- scikit-learn (for accuracy metrics)
+- pandas, numpy (for data processing)
+
+Logging and Tracking:
+- wandb or tensorboard for experiment tracking
+- tqdm for progress bars
+
+Data Processing:
+- json (for annotation loading)
+- pathlib (for file handling)
+```
+
+## Success Criteria
+
+### Quantitative Targets
+- **BLEU Score**: > 0.85 on test set
+- **Exact Match Accuracy**: > 70% on test set
+- **Token Accuracy**: > 95% on test set
+- **Training Convergence**: Stable loss decrease over epochs
+
+### Qualitative Targets
+- **Structure Preservation**: Correctly identify table rows and columns
+- **Complex Table Handling**: Handle merged cells and nested headers
+- **Robustness**: Work on various table types and layouts
+- **HTML Validity**: Generated HTML should be well-formed and valid
+
+## Risk Mitigation and Backup Plans
+
+### Potential Issues and Solutions
+1. **Memory Constraints**: Reduce batch size, use gradient accumulation
+2. **Long Sequence Handling**: Implement sequence chunking for very long tables
+3. **Poor Convergence**: Adjust learning rate, try different optimizers
+4. **Overfitting**: Implement dropout, data augmentation, early stopping
+
+### Fallback Strategies
+1. **Simpler Architecture**: If full fine-tuning fails, try adapter-based training
+2. **Reduced Complexity**: Start with simpler table types, gradually add complexity
+3. **Alternative Metrics**: If HTML generation is imperfect, focus on structure extraction
+
+## Timeline and Milestones
+
+### Week 1: Data Setup and Baseline
+- Download and preprocess PubTabNet dataset
+- Implement data loading pipeline
+- Run baseline TrOCR model on sample data
+
+### Week 2: Model Training
+- Implement full training pipeline
+- Start model fine-tuning
+- Monitor training progress and adjust hyperparameters
+
+### Week 3: Optimization and Evaluation
+- Complete model training
+- Implement evaluation metrics
+- Conduct comprehensive model evaluation
+
+### Week 4: Analysis and Documentation
+- Error analysis and model improvements
+- Generate final results and documentation
+- Prepare model for deployment/sharing
+
+## Expected Research Contribution
+
+This project will contribute:
+1. **Practical Solution**: Working system for table extraction from scientific documents
+2. **Methodology**: Detailed approach for fine-tuning TrOCR on structured document tasks
+3. **Evaluation Framework**: Comprehensive metrics for table structure extraction
+4. **Performance Benchmarks**: Results on standard PubTabNet dataset for future comparisons
+5. **Open Source Model**: Trained model available for research community use
+
+## Additional Notes for Implementation
+
+### Data Format Requirements
+- Images should be in RGB format, preferably PNG or JPEG
+- HTML annotations should be clean and well-formed
+- Handle special characters and Unicode properly in text processing
+
+### Model Customization Points
+- Token vocabulary can be extended for domain-specific terminology
+- Generation parameters can be tuned for different table types
+- Post-processing rules can be added to clean up generated HTML
+
+### Deployment Considerations
+- Model should be deployable via Hugging Face transformers
+- Inference time should be reasonable for practical use (< 2 seconds per image)
+- Memory usage should be manageable for deployment on standard hardware

@@ -1,0 +1,25 @@
+{
+  "train_losses": [
+    7.554590497698102,
+    4.613448687962124,
+    4.018486329487392
+  ],
+  "val_losses": [
+    5.0482204755147295,
+    4.166645050048828,
+    3.921992778778076
+  ],
+  "config": {
+    "model_name": "microsoft/trocr-base-printed",
+    "batch_size": 8,
+    "learning_rate": 5e-05,
+    "weight_decay": 0.01,
+    "num_epochs": 3,
+    "model_save_dir": "./models",
+    "log_dir": "./logs",
+    "max_length": 512,
+    "warmup_ratio": 0.1,
+    "save_every_epoch": true
+  },
+  "best_val_loss": 3.921992778778076
+}
