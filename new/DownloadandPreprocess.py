@@ -171,8 +171,8 @@ def download_and_preprocess_data(test_mode=True):
     return datasets
 
 if __name__ == "__main__":
-    # Download and preprocess data
-    datasets = download_and_preprocess_data(test_mode=True)
+    # Download and preprocess data - CHANGED TO FULL DATASET
+    datasets = download_and_preprocess_data(test_mode=False)
     
     print("\nPreprocessing completed successfully!")
     print("You can now use these datasets for training your TrOCR model.")

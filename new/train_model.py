@@ -23,6 +23,11 @@ class TrOCRTrainer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         logger.info(f"Using device: {self.device}")
         
+        # Clear GPU cache at start
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.set_per_process_memory_fraction(0.9)  # Use 90% of GPU memory
+        
         # Create directories
         Path(config['model_save_dir']).mkdir(parents=True, exist_ok=True)
         Path(config['log_dir']).mkdir(parents=True, exist_ok=True)
@@ -30,6 +35,9 @@ class TrOCRTrainer:
         # Initialize model and processor
         self.processor = TrOCRProcessor.from_pretrained(config['model_name'])
         self.model = VisionEncoderDecoderModel.from_pretrained(config['model_name']).to(self.device)
+        
+        # Enable gradient checkpointing to save memory
+        self.model.gradient_checkpointing_enable()
         
         # Set decoder configuration for proper training
         self.model.config.decoder_start_token_id = self.processor.tokenizer.cls_token_id
@@ -53,7 +61,8 @@ class TrOCRTrainer:
             batch_size=self.config['batch_size'],
             shuffle=True,
             num_workers=0,  # Avoid multiprocessing issues
-            pin_memory=True if self.device.type == 'cuda' else False
+            pin_memory=False,  # Disable pin_memory to save GPU memory
+            drop_last=True  # Drop incomplete batches
         )
         
         val_loader = DataLoader(
@@ -61,7 +70,8 @@ class TrOCRTrainer:
             batch_size=self.config['batch_size'],
             shuffle=False,
             num_workers=0,  # Avoid multiprocessing issues
-            pin_memory=True if self.device.type == 'cuda' else False
+            pin_memory=False,  # Disable pin_memory to save GPU memory
+            drop_last=False
         )
         
         test_loader = DataLoader(
@@ -69,7 +79,8 @@ class TrOCRTrainer:
             batch_size=self.config['batch_size'],
             shuffle=False,
             num_workers=0,  # Avoid multiprocessing issues
-            pin_memory=True if self.device.type == 'cuda' else False
+            pin_memory=False,  # Disable pin_memory to save GPU memory
+            drop_last=False
         )
         
         return train_loader, val_loader, test_loader
@@ -83,9 +94,13 @@ class TrOCRTrainer:
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}")
         
         for batch_idx, batch in enumerate(progress_bar):
+            # Clear cache periodically
+            if batch_idx % 100 == 0 and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
             # Move to device
-            pixel_values = batch['pixel_values'].to(self.device)
-            labels = batch['labels'].to(self.device)
+            pixel_values = batch['pixel_values'].to(self.device, non_blocking=True)
+            labels = batch['labels'].to(self.device, non_blocking=True)
             
             # Forward pass
             optimizer.zero_grad()
@@ -100,12 +115,16 @@ class TrOCRTrainer:
             
             total_loss += loss.item()
             
+            # Clean up tensors to save memory
+            del pixel_values, labels, outputs, loss
+            
             # Update progress bar
             avg_loss = total_loss / (batch_idx + 1)
             progress_bar.set_postfix({
-                'loss': f'{loss.item():.4f}',
+                'loss': f'{total_loss / (batch_idx + 1):.4f}',
                 'avg_loss': f'{avg_loss:.4f}',
-                'lr': f'{scheduler.get_last_lr()[0]:.2e}'
+                'lr': f'{scheduler.get_last_lr()[0]:.2e}',
+                'mem': f'{torch.cuda.memory_allocated()/1e9:.1f}GB' if torch.cuda.is_available() else 'N/A'
             })
         
         return total_loss / num_batches
@@ -230,11 +249,11 @@ def get_training_config():
         # Model settings
         'model_name': 'microsoft/trocr-base-printed',
         
-        # Training hyperparameters
-        'batch_size': 8,  # Adjust based on GPU memory
-        'learning_rate': 5e-5,
+        # Training hyperparameters - MEMORY OPTIMIZED FOR 12GB GPU
+        'batch_size': 4,  # Reduced for memory efficiency
+        'learning_rate': 3e-5,  # Lower LR for stability
         'weight_decay': 0.01,
-        'num_epochs': 3,  # Start small for testing
+        'num_epochs': 15,  # More epochs for full dataset
         
         # Directories
         'model_save_dir': './models',
@@ -262,12 +281,12 @@ def main():
     # Initialize trainer
     trainer = TrOCRTrainer(config)
     
-    # Start training (test mode for quick validation)
-    print(f"\nStarting training in TEST mode (small dataset)...")
-    print("Change test_mode=False for full dataset training")
+    # Start training on FULL DATASET
+    print(f"\nStarting training on FULL DATASET...")
+    print("This will take several hours but give much better results!")
     
     try:
-        model = trainer.train(test_mode=True)
+        model = trainer.train(test_mode=False)
         print("\n✅ Training completed successfully!")
         print(f"Best model saved to: {config['model_save_dir']}/best_model_hf/")
         print(f"Training logs saved to: {config['log_dir']}/training_log.json")
